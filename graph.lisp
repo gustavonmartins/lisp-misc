@@ -9,8 +9,10 @@
 
 (defstruct vertex
   name
-  (adjacents nil :type list)
+  (sucessors nil :type list)
   (enqueued-or-visited nil :type boolean)
+  (in-degree 0 :type integer)
+  (out-degree 0 :type integer)
   )
 
 (defmethod addvertex ((g graph) vertexname) ; undesired behaviour with repeated items
@@ -20,7 +22,26 @@
 
 (defmethod addvertex ((g graph) (l list))
   (mapcar (lambda (x)
-	    (addvertex g x)) l)
+	    (addvertex g x))
+	  l)
+  )
+
+(defmethod removevertex ((g graph) vertexname)
+  (setf (graph-vertexlist g) (remove-if (lambda (x)
+					  (if (and (eq (vertex-name x) vertexname)
+						   (eq (vertex-in-degree x) 0))
+					      (progn (princ 'found)
+						     (mapcar (lambda (y)                        ;Actions on sucessors
+							       (decf (vertex-in-degree y)))
+							     (vertex-sucessors x)
+							     )
+						     (princ 'todo-actions-on-precedents)	;Actions on precedents
+						     (decf (graph-vertexamount g))             ;Actions on graph vertex
+						     (decf (graph-edgesamount g) (vertex-out-degree x)) ; Actions on graph edges
+						     t)
+					      (progn (princ 'not-found-or-indeg-incompatible)
+						     nil)))
+					(graph-vertexlist g)))
   )
 
 (defmethod addedge ((g graph) first-vertex-name second-vertex-name) ; undesired behaviour with repeated items
@@ -28,13 +49,18 @@
 	(first-vertex (find first-vertex-name (graph-vertexlist g) :key 'vertex-name)) 
 	(second-vertex (find second-vertex-name (graph-vertexlist g) :key 'vertex-name)))
     (unless (or (null first-vertex) (null second-vertex))
-      (push second-vertex (vertex-adjacents first-vertex))
-      (push first-vertex (vertex-adjacents second-vertex))))
+      (push second-vertex (vertex-sucessors first-vertex))
+      (incf (vertex-in-degree second-vertex))
+      (incf (vertex-out-degree first-vertex))
+      (incf (graph-edgesamount g))
+      ))
   )
 
 
-(defmethod mapgraph-bfs ((g graph) (apply-fn function) starting-vertex-name)
-  (mapcar (lambda (x) (setf (vertex-enqueued-or-visited x) nil)) (graph-vertexlist g));mark all vertices as not-visited
+(defmethod mapsucessors-bfs ((g graph) (apply-fn function) starting-vertex-name) ; Problem: cant reach nodes not connected to initial node!
+  (mapcar (lambda (x)
+	    (setf (vertex-enqueued-or-visited x) nil))
+	  (graph-vertexlist g));mark all vertices as not-visited
   
   (let* (
 	 (starting-vertex (find starting-vertex-name (graph-vertexlist g) :key 'vertex-name))
@@ -43,16 +69,16 @@
 			    (setf (vertex-enqueued-or-visited x) t)))
 	 )
     (enqueue tovisit-list starting-vertex mark-as-visited)
-    (enqueue tovisit-list (vertex-adjacents starting-vertex) mark-as-visited)
+    (enqueue tovisit-list (vertex-sucessors starting-vertex) mark-as-visited)
     
     (mapcar (lambda (x) ;take each enqueued vertex and analyse it
 	      (funcall apply-fn x)
-	      (mapcar (lambda (y) ; have a look at adjacents to the current vertex add it to the queue list (unless it has been added before)
+	      (mapcar (lambda (y) ; have a look at sucessors to the current vertex add it to the queue list (unless it has been added before)
 			(unless (vertex-enqueued-or-visited y)
 			  (setf (vertex-enqueued-or-visited y) t)
 			  (enqueue tovisit-list y)
 			  ))
-		      (vertex-adjacents x))
+		      (vertex-sucessors x))
 	      )
 	    (fifo-aslist tovisit-list))
     )
@@ -71,4 +97,4 @@
 (addedge test 'D 'G)
 (addedge test 'G 'I)
 
-(mapgraph-bfs test (lambda (x) (princ (vertex-name x))) 'A)
+(mapsucessors-bfs test (lambda (x) (princ (vertex-name x))) 'A)
